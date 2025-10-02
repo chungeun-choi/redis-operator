@@ -46,7 +46,7 @@ func GenerateConfig() error {
 	{
 		masterGroupName, _ := util.CoalesceEnv("MASTER_GROUP_NAME", "mymaster")
 		ip, _ := util.CoalesceEnv("IP", "0.0.0.0")
-		port, _ := util.CoalesceEnv("PORT", "6379")
+		port, _ := util.CoalesceEnv("PORT", "26379")
 		quorum, _ := util.CoalesceEnv("QUORUM", "2")
 		downAfterMilliseconds, _ := util.CoalesceEnv("DOWN_AFTER_MILLISECONDS", "30000")
 		parallelSyncs, _ := util.CoalesceEnv("PARALLEL_SYNCS", "1")
