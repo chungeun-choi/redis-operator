@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 
+	"k8s.io/client-go/rest"
+
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/agent/bootstrap"
 	rediscontroller "github.com/OT-CONTAINER-KIT/redis-operator/pkg/controllers/redis"
@@ -124,19 +126,26 @@ func createManagerCommand() *cobra.Command {
 				}
 			}
 
-			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
+			cfg := ctrl.GetConfigOrDie()
+			cfg.QPS = 300
+			cfg.Burst = 600
+			mgr, err := ctrl.NewManager(cfg, options)
 			if err != nil {
 				setupLog.Error(err, "unable to start manager")
 				return err
 			}
 
-			k8sclient, err := k8sutils.GenerateK8sClient(k8sutils.GenerateK8sConfig())
+			k8sProv := func() (*rest.Config, error) {
+				return cfg, nil
+			}
+
+			k8sclient, err := k8sutils.GenerateK8sClient(k8sProv)
 			if err != nil {
 				setupLog.Error(err, "unable to create k8s client")
 				return err
 			}
 
-			dk8sClient, err := k8sutils.GenerateK8sDynamicClient(k8sutils.GenerateK8sConfig())
+			dk8sClient, err := k8sutils.GenerateK8sDynamicClient(k8sProv)
 			if err != nil {
 				setupLog.Error(err, "unable to create k8s dynamic client")
 				return err
