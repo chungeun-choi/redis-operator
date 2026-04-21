@@ -69,6 +69,8 @@ func createManagerCommand() *cobra.Command {
 	var enableWebhooks bool
 	var maxConcurrentReconciles int
 	var featureGatesString string
+	var kubeClientQPS int
+	var kubeClientBurst int
 
 	// Create zap options
 	zapOptions := zap.Options{
@@ -127,8 +129,8 @@ func createManagerCommand() *cobra.Command {
 			}
 
 			cfg := ctrl.GetConfigOrDie()
-			cfg.QPS = 300
-			cfg.Burst = 600
+			cfg.QPS = float32(kubeClientQPS)
+			cfg.Burst = kubeClientBurst
 			mgr, err := ctrl.NewManager(cfg, options)
 			if err != nil {
 				setupLog.Error(err, "unable to start manager")
@@ -239,6 +241,8 @@ func createManagerCommand() *cobra.Command {
 	cmd.Flags().IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 1, "Max concurrent reconciles")
 	cmd.Flags().StringVar(&featureGatesString, "feature-gates", os.Getenv("FEATURE_GATES"), "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
 		"Options are:\n  GenerateConfigInInitContainer=true|false: enables using init container for config generation")
+	cmd.Flags().IntVar(&kubeClientQPS, "kube-api-qps", 300, "Maximum QPS to use while talking with kubernetes apiserver")
+	cmd.Flags().IntVar(&kubeClientBurst, "kube-api-burst", 600, "Maximum burst for throttle while talking with kubernetes apiserver")
 
 	// Add the zap flags from the flag set to the command's flags
 	zapFlagSet.VisitAll(func(f *flag.Flag) {
