@@ -47,8 +47,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			{typ: "statefulset", rec: r.reconcileStatefulSet},
 			{typ: "service", rec: r.reconcileService},
 			{typ: "poddisruptionbudget", rec: r.reconcilePDB},
-			{typ: "redis", rec: r.reconcileRedis},
-			{typ: "status", rec: r.reconcileStatus},
+			{typ: "redisAndStatus", rec: r.reconcileRedisAndStatus},
 		}
 	}
 	for _, reconciler := range reconcilers {
@@ -161,13 +160,14 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *redisv1beta
 	return intctrlutil.Reconciled()
 }
 
-func (r *Reconciler) reconcileRedis(ctx context.Context, instance *redisv1beta2.RedisReplication) (ctrl.Result, error) {
+func (r *Reconciler) reconcileRedisAndStatus(ctx context.Context, instance *redisv1beta2.RedisReplication) (ctrl.Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var realMaster string
 	masterNodes := k8sutils.GetRedisNodesByRole(ctx, r.K8sClient, instance, "master")
 	slaveNodes := k8sutils.GetRedisNodesByRole(ctx, r.K8sClient, instance, "slave")
+	
 	if len(masterNodes) > 1 {
 		log.FromContext(ctx).Info("Creating redis replication by executing replication creation commands")
 
@@ -186,26 +186,20 @@ func (r *Reconciler) reconcileRedis(ctx context.Context, instance *redisv1beta2.
 	}
 
 	monitoring.RedisReplicationReplicasSizeCurrent.WithLabelValues(instance.Namespace, instance.Name).Set(float64(len(masterNodes) + len(slaveNodes)))
-	monitoring.RedisReplicationReplicasSizeDesired.WithLabelValues(instance.Namespace, instance.Name).Set(float64(*instance.Spec.Size))
+	if instance.Spec.Size != nil {
+		monitoring.RedisReplicationReplicasSizeDesired.WithLabelValues(instance.Namespace, instance.Name).Set(float64(*instance.Spec.Size))
+	}
 
-	return intctrlutil.Reconciled()
-}
-
-// reconcileStatus update status and label.
-func (r *Reconciler) reconcileStatus(ctx context.Context, instance *redisv1beta2.RedisReplication) (ctrl.Result, error) {
-	var err error
-	var realMaster string
-
-	masterNodes := k8sutils.GetRedisNodesByRole(ctx, r.K8sClient, instance, "master")
-	realMaster = k8sutils.GetRedisReplicationRealMaster(ctx, r.K8sClient, instance, masterNodes)
-	if err = r.UpdateRedisReplicationMaster(ctx, instance, realMaster); err != nil {
+	if realMaster == "" {
+		realMaster = k8sutils.GetRedisReplicationRealMaster(ctx, r.K8sClient, instance, masterNodes)
+	}
+	if err := r.UpdateRedisReplicationMaster(ctx, instance, realMaster); err != nil {
 		return intctrlutil.RequeueWithError(ctx, err, "")
 	}
-	if err = r.UpdateRedisPodRoleLabel(ctx, instance, realMaster); err != nil {
+	if err := r.UpdateRedisPodRoleLabel(ctx, instance, realMaster); err != nil {
 		return intctrlutil.RequeueWithError(ctx, err, "")
 	}
 
-	slaveNodes := k8sutils.GetRedisNodesByRole(ctx, r.K8sClient, instance, "slave")
 	if realMaster != "" {
 		monitoring.RedisReplicationConnectedSlavesTotal.WithLabelValues(instance.Namespace, instance.Name).Set(float64(len(slaveNodes)))
 	} else {
